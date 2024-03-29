@@ -2,75 +2,35 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"sync"
-	"time"
 
-	"github.com/bianyuanop/avail-test/client"
+	"github.com/rollkit/avail-da"
+	"github.com/rollkit/go-da"
 )
 
 func main() {
-	conf := client.AvailClientConfig{
-		ApiURL: "wss://goldberg.avail.tools:443/ws",
-		Seed:   "bottom drive obey lake curtain smoke basket hold race lonely fit walk//Alice",
-		AppID:  0,
+	conf := avail.Config{
+		AppID: 0,
+		LcURL: "http://localhost:7000/v2",
 	}
 
-	cli, err := client.NewAvailClient(&conf)
-	if err != nil {
-		panic(err)
-	}
 	ctx := context.Background()
 
-	// Submitting single
-	data := make([]byte, 200)
-	_, err = rand.Read(data)
-	if err != nil {
-		fmt.Println("unable to gen random data")
-	}
-	ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-	defer cancle()
-	h, err := cli.SubmitData(ctx, data)
+	cli := avail.NewAvailDA(conf, ctx)
+
+	blob := make([]byte, 100)
+
+	ids, err := cli.Submit(ctx, []da.Blob{blob}, -1, nil)
 	if err != nil {
 		fmt.Printf("unable to submit data, reason: %s\n", err.Error())
+		return
 	}
-	fmt.Printf("hash of tx: %s\n", h.Hex())
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	if len(ids) != 1 {
+		fmt.Printf("length of submitted data doesnt' match, len: %d\n", len(ids))
+		return
+	}
 
-	// Submitting simultaneously
-	go func() {
-		data := make([]byte, 200)
-		_, err := rand.Read(data)
-		if err != nil {
-			fmt.Println("unable to gen random data1")
-		}
-		ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-		defer cancle()
-		h, err := cli.SubmitData(ctx, data)
-		if err != nil {
-			fmt.Printf("unable to submit data1, reason: %s\n", err.Error())
-		}
-		fmt.Printf("hash of tx1: %s\n", h.Hex())
-		wg.Done()
-	}()
-	go func() {
-		data := make([]byte, 200)
-		_, err = rand.Read(data)
-		if err != nil {
-			fmt.Println("unable to gen random data2")
-		}
-		ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-		defer cancle()
-		h, err := cli.SubmitData(ctx, data)
-		if err != nil {
-			fmt.Printf("unable to submit data2, reason: %s\n", err.Error())
-		}
-		fmt.Printf("hash of tx2: %s\n", h.Hex())
-		wg.Done()
-	}()
-
-	wg.Wait()
+	fmt.Println(hex.EncodeToString(ids[0]))
 }
