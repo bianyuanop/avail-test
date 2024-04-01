@@ -23,25 +23,12 @@ func main() {
 	}
 	ctx := context.Background()
 
-	// Submitting single
-	data := make([]byte, 200)
-	_, err = rand.Read(data)
-	if err != nil {
-		fmt.Println("unable to gen random data")
-	}
-	ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-	defer cancle()
-	h, err := cli.SubmitData(ctx, data)
-	if err != nil {
-		fmt.Printf("unable to submit data, reason: %s\n", err.Error())
-	}
-	fmt.Printf("hash of tx: %s\n", h.Hex())
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	// Submitting simultaneously
 	go func() {
+		fmt.Println("submitting data1")
 		data := make([]byte, 200)
 		_, err := rand.Read(data)
 		if err != nil {
@@ -57,6 +44,8 @@ func main() {
 		wg.Done()
 	}()
 	go func() {
+		// time.Sleep(5 * time.Second)
+		fmt.Println("submitting data2")
 		data := make([]byte, 200)
 		_, err = rand.Read(data)
 		if err != nil {

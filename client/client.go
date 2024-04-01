@@ -21,6 +21,8 @@ type AvailClient struct {
 	MaxBlobSize int
 
 	kp *signature.KeyringPair
+	// this is used for consecutive data submission
+	nonce uint32
 }
 
 type AvailClientConfig struct {
@@ -44,7 +46,8 @@ func NewAvailClient(config *AvailClientConfig) (*AvailClient, error) {
 		AppID:       config.AppID,
 		MaxBlobSize: AvailMaxBlobSize,
 
-		kp: &keyringPair,
+		kp:    &keyringPair,
+		nonce: 0,
 	}, nil
 }
 
@@ -116,7 +119,16 @@ func (ac *AvailClient) SubmitData(ctx context.Context, data []byte) (*types.Hash
 		panic(fmt.Sprintf("cannot get latest storage:%v", err))
 	}
 
-	nonce := uint32(accountInfo.Nonce)
+	var nonce uint32
+	if ac.nonce == 0 {
+		nonce = uint32(accountInfo.Nonce)
+		ac.nonce = nonce
+	} else {
+		nonce = ac.nonce + 1
+		ac.nonce++
+	}
+	fmt.Printf("nonce: %d\n", nonce)
+
 	options := types.SignatureOptions{
 		BlockHash:          genesisHash,
 		Era:                types.ExtrinsicEra{IsMortalEra: false},
