@@ -3,17 +3,13 @@ package client
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"sync"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
-
-const AvailMaxBlobSize = 2 * 1024 * 1024
-
-var ErrSubmissionTimeout = errors.New("da submission timeout")
 
 type AvailClient struct {
 	Api         *gsrpc.SubstrateAPI
@@ -21,8 +17,9 @@ type AvailClient struct {
 	MaxBlobSize int
 
 	kp *signature.KeyringPair
-	// this is used for consecutive data submission
-	nonce uint32
+	// to calculate nonce for each submission
+	nonce  uint32
+	nonceL sync.Mutex
 }
 
 type AvailClientConfig struct {
@@ -41,32 +38,36 @@ func NewAvailClient(config *AvailClientConfig) (*AvailClient, error) {
 		panic(fmt.Sprintf("cannot create KeyPair:%v", err))
 	}
 
+	meta, err := api.RPC.State.GetMetadataLatest()
+	if err != nil {
+		panic(fmt.Sprintf("cannot get metadata:%v", err))
+	}
+
+	key, err := types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create storage key:%w", err)
+	}
+
+	var accountInfo types.AccountInfo
+	ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
+	if err != nil || !ok {
+		return nil, fmt.Errorf("cannot get latest storage:%v", err)
+	}
+
+	nonce := uint32(accountInfo.Nonce)
 	return &AvailClient{
 		Api:         api,
 		AppID:       config.AppID,
-		MaxBlobSize: AvailMaxBlobSize,
+		MaxBlobSize: 2 * 1024 * 1024,
 
-		kp:    &keyringPair,
-		nonce: 0,
+		kp: &keyringPair,
+
+		nonce: nonce,
 	}, nil
 }
 
 // The following example shows how submit data blob and track transaction status
 func (ac *AvailClient) SubmitData(ctx context.Context, data []byte) (*types.Hash, error) {
-	// var configJSON string
-	// var config config.Config
-	// flag.StringVar(&configJSON, "config", "", "config json file")
-	// flag.Parse()
-
-	// if configJSON == "" {
-	// 	log.Println("No config file provided. Exiting...")
-	// 	os.Exit(0)
-	// }
-
-	// err := config.GetConfig(configJSON)
-	// if err != nil {
-	// 	panic(fmt.Sprintf("cannot get config:%v", err))
-	// }
 
 	api := ac.Api
 	// , err := gsrpc.NewSubstrateAPI(ac.ApiURL)
@@ -108,26 +109,23 @@ func (ac *AvailClient) SubmitData(ctx context.Context, data []byte) (*types.Hash
 
 	keyringPair := ac.kp
 
-	key, err := types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create storage key:%w", err)
-	}
+	// key, err := types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("cannot create storage key:%w", err)
+	// }
 
-	var accountInfo types.AccountInfo
-	ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
-	if err != nil || !ok {
-		panic(fmt.Sprintf("cannot get latest storage:%v", err))
-	}
+	// var accountInfo types.AccountInfo
+	// ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
+	// if err != nil || !ok {
+	// 	panic(fmt.Sprintf("cannot get latest storage:%v", err))
+	// }
 
-	var nonce uint32
-	if ac.nonce == 0 {
-		nonce = uint32(accountInfo.Nonce)
-		ac.nonce = nonce
-	} else {
-		nonce = ac.nonce + 1
-		ac.nonce++
-	}
-	fmt.Printf("nonce: %d\n", nonce)
+	// nonce := uint32(accountInfo.Nonce)
+	ac.nonceL.Lock()
+	nonce := ac.nonce
+	ac.nonce++
+	ac.nonceL.Unlock()
+	fmt.Printf("using nonce %d\n", ac.nonce-1)
 
 	options := types.SignatureOptions{
 		BlockHash:          genesisHash,
@@ -152,6 +150,8 @@ func (ac *AvailClient) SubmitData(ctx context.Context, data []byte) (*types.Hash
 		return nil, fmt.Errorf("cannot submit extrinsic:%v", err)
 	}
 
+	fmt.Println("submitted, waiting...")
+
 	defer sub.Unsubscribe()
 	for {
 		select {
@@ -168,7 +168,7 @@ func (ac *AvailClient) SubmitData(ctx context.Context, data []byte) (*types.Hash
 				return &hash, nil
 			}
 		case <-ctx.Done():
-			return nil, ErrSubmissionTimeout
+			return nil, fmt.Errorf("timeout")
 		}
 	}
 }

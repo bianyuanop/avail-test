@@ -27,39 +27,73 @@ func main() {
 	wg.Add(2)
 
 	// Submitting simultaneously
+	fmt.Println("submitting data1")
+
+	// go func() {
+	// 	defer wg.Done()
+	// 	size1 := 0.5 * 1024 * 1024
+	// 	err = submitWithSize(ctx, cli, int(size1))
+	// 	if err != nil {
+	// 		fmt.Printf("unable to submit with size %d, err: %s\n", int(size1), err)
+	// 	}
+	// }()
+
+	// go func() {
+	// 	defer wg.Done()
+	// 	size1 := 1 * 1024 * 1024
+	// 	err = submitWithSize(ctx, cli, int(size1))
+	// 	if err != nil {
+	// 		fmt.Printf("unable to submit with size %d, err: %s\n", int(size1), err)
+	// 	}
+	// }()
+
+	// time.Sleep(5 * time.Second)
+
 	go func() {
-		fmt.Println("submitting data1")
-		data := make([]byte, 200)
-		_, err := rand.Read(data)
+		defer wg.Done()
+		size1 := 0.15 * 1024 * 1024
+		err = submitWithSize(ctx, cli, int(size1))
 		if err != nil {
-			fmt.Println("unable to gen random data1")
+			fmt.Printf("unable to submit with size %d, err: %s\n", int(size1), err)
 		}
-		ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-		defer cancle()
-		h, err := cli.SubmitData(ctx, data)
-		if err != nil {
-			fmt.Printf("unable to submit data1, reason: %s\n", err.Error())
-		}
-		fmt.Printf("hash of tx1: %s\n", h.Hex())
-		wg.Done()
-	}()
-	go func() {
-		// time.Sleep(5 * time.Second)
-		fmt.Println("submitting data2")
-		data := make([]byte, 200)
-		_, err = rand.Read(data)
-		if err != nil {
-			fmt.Println("unable to gen random data2")
-		}
-		ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
-		defer cancle()
-		h, err := cli.SubmitData(ctx, data)
-		if err != nil {
-			fmt.Printf("unable to submit data2, reason: %s\n", err.Error())
-		}
-		fmt.Printf("hash of tx2: %s\n", h.Hex())
-		wg.Done()
 	}()
 
+	go func() {
+		defer wg.Done()
+		size1 := 1 * 1024 * 1024
+		err = submitWithSize(ctx, cli, int(size1))
+		if err != nil {
+			fmt.Printf("unable to submit with size %d, err: %s\n", int(size1), err)
+		}
+	}()
 	wg.Wait()
+	// data := make([]byte, int(size))
+	// _, err = rand.Read(data)
+	// if err != nil {
+	// 	fmt.Println("unable to gen random data1")
+	// }
+	// ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
+	// defer cancle()
+	// h, err := cli.SubmitData(ctx, data)
+	// if err != nil {
+	// 	fmt.Printf("unable to submit data1, reason: %s\n", err.Error())
+	// }
+	// fmt.Printf("hash of tx1: %s\n", h.Hex())
+}
+
+func submitWithSize(ctx context.Context, cli *client.AvailClient, size int) error {
+	data := make([]byte, size)
+	_, err := rand.Read(data)
+	if err != nil {
+		return fmt.Errorf("unable to gen random data")
+	}
+	ctx, cancle := context.WithTimeout(ctx, 70*time.Second)
+	defer cancle()
+	h, err := cli.SubmitData(ctx, data)
+	if err != nil {
+		return fmt.Errorf("unable to submit data, reason: %s\n", err.Error())
+	}
+	fmt.Printf("hash of tx: %s\n", h.Hex())
+
+	return nil
 }
